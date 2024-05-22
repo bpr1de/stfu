@@ -16,6 +16,8 @@
 #include <vector>
 
 #include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
 
 //
 // Conclude the test routine with a passing result.
@@ -200,7 +202,7 @@ namespace stfu_private {
 
         typedef std::basic_string<char_type> string;
 
-        static constexpr int const& tab_width = 8;
+        static const size_t tab_width = 8;
         const std::string prefix = "#   ";
 
         size_t width;
@@ -425,11 +427,13 @@ stfu::test::operator()() const
 
         // Any signal-termination condition is considered a CRASH.
         if (WIFSIGNALED(stat_loc)) {
-            char signame[20];
-            ::strsignal_r(WTERMSIG(stat_loc), signame, sizeof(signame) - 1);
             r.result = stfu::test_result::CRASH;
-            r.message.append("crashed with: ")
-                     .append(signame);
+
+            const int signal = WTERMSIG(stat_loc);
+            if (signal < NSIG) {
+                r.message.append("crashed with: ")
+                         .append(::sys_siglist[signal]);
+            }
             break;
         }
     }
