@@ -13,10 +13,11 @@
 #include <string>
 #include <functional>
 #include <chrono>
+#include <utility>
 #include <vector>
 
 #include <unistd.h>
-#include <signal.h>
+#include <csignal>
 #include <sys/wait.h>
 
 //
@@ -69,9 +70,9 @@ namespace stfu {
     //
 
     struct test_result_data {
-        test_result result = test_result::DIDNT_RUN;
-        std::string message;
-        std::chrono::duration<double> runtime;
+        test_result result{test_result::DIDNT_RUN};
+        std::string message{};
+        std::chrono::duration<double> runtime{};
     };
 
     //
@@ -86,7 +87,7 @@ namespace stfu {
         test(const char* name,
              test_routine routine,
              const char* description = "") noexcept;
-        ~test() noexcept;
+        ~test();
 
         const std::string& get_name() const noexcept;
         const std::string& get_description() const noexcept;
@@ -94,14 +95,14 @@ namespace stfu {
 
         test& set_enable(bool) noexcept;
 
-        const test_result_data operator()() const;
+        test_result_data operator()() const;
 
         protected:
 
         test_routine fn;
 
         mutable int filedes[2] = { -1, -1 };
-        enum {
+        enum pipe_end {
             read_end = 0,
             write_end = 1
         };
@@ -112,8 +113,8 @@ namespace stfu {
 
         void write_result(test_result) const noexcept;
         void write_result(test_result, const std::string&) const noexcept;
-        const test_result_data read_result() const noexcept;
-        void close_handle(int* const) const noexcept;
+        test_result_data read_result() const noexcept;
+        void close_handle(pipe_end) const noexcept;
     };
 
     //
@@ -123,13 +124,13 @@ namespace stfu {
     class test_group {
         public:
 
-        test_group(const char* name,
-                   const char* description = "") noexcept;
+        explicit test_group(const char* name,
+                            const char* description = "") noexcept;
 
         test_group& set_verbose(bool) noexcept;
         test_group& add_test(stfu::test&);
 
-        const size_t operator()(std::ostream& = std::cout) const;
+        size_t operator()(std::ostream& = std::cout) const;
 
         protected:
 
@@ -148,14 +149,14 @@ namespace stfu_private {
     // tests can never pass implicitly; all passing results must be denoted
     // explicitly by throwing a class of this type (as opposed to returning
     // true or zero or something that might happen accidentally in the
-    // course of the test routine.
+    // course of the test routine).
     //
 
     class pass {};
 
     //
     // The base type for all failure results. Can not be instantiated
-    // outside of a more specific type of failure.
+    // outside a more specific type of failure.
     //
 
     class fail {
@@ -196,7 +197,7 @@ namespace stfu_private {
     class widthbuf: public std::streambuf {
         public:
 
-        widthbuf(size_t w, std::streambuf* s) noexcept;
+        widthbuf(size_t w, std::streambuf* s);
 
         protected:
 
@@ -211,13 +212,13 @@ namespace stfu_private {
         std::streambuf* sbuf;
         string buffer;
 
-        int_type overflow(int_type c) noexcept;
+        int_type overflow(int_type c) override;
     };
 
     class widthstream: public std::ostream {
         public:
 
-        widthstream(size_t width, std::ostream &os) noexcept;
+        widthstream(size_t width, std::ostream &os);
 
         protected:
 
@@ -267,12 +268,12 @@ operator<<(std::ostream& out, const stfu::test_result_data& d)
 
 inline
 stfu::test::test(const char* n, test_routine f, const char* d) noexcept:
-    fn{f}, name{n}, description{d}
+    fn{std::move(f)}, name{n}, description{d}
 {
 }
 
 inline
-stfu::test::~test() noexcept
+stfu::test::~test()
 {
     for (int i: filedes) {
         if (-1 != i) {
@@ -313,7 +314,7 @@ stfu::test::write_result(test_result r) const noexcept
 }
 
 inline void
-stfu::test::write_result(test_result r, const std::string& message) const noexcept
+stfu::test::write_result(test_result r, const std::string& m) const noexcept
 {
     switch (r) {
     case test_result::PASS:
@@ -324,14 +325,14 @@ stfu::test::write_result(test_result r, const std::string& message) const noexce
         ::write(filedes[write_end], "FAIL", 4);
     }
 
-    if (!message.empty()) {
-        ::write(filedes[write_end], message.c_str(), message.length());
+    if (!m.empty()) {
+        ::write(filedes[write_end], m.c_str(), m.length());
     }
 
-    close_handle(&filedes[write_end]);
+    close_handle(write_end);
 }
 
-inline const stfu::test_result_data
+inline stfu::test_result_data
 stfu::test::read_result() const noexcept
 {
     test_result_data r;
@@ -339,7 +340,7 @@ stfu::test::read_result() const noexcept
     ssize_t l;
     std::string message;
 
-    l = read(filedes[read_end], buffer, sizeof(buffer));
+    l = ::read(filedes[read_end], buffer, sizeof(buffer));
 
     if (l < 1) {
         message = "Test system failure";
@@ -361,13 +362,13 @@ stfu::test::read_result() const noexcept
 }
 
 inline void
-stfu::test::close_handle(int* const fd) const noexcept
+stfu::test::close_handle(pipe_end e) const noexcept
 {
-    ::close(*fd);
-    *fd = -1;
+    ::close(filedes[e]);
+    filedes[e] = -1;
 }
 
-inline const stfu::test_result_data
+inline stfu::test_result_data
 stfu::test::operator()() const
 {
     using namespace std::chrono;
@@ -392,7 +393,7 @@ stfu::test::operator()() const
 
     // Child
     case 0:
-        close_handle(&filedes[read_end]);
+        close_handle(read_end);
 
         try {
             fn();
@@ -407,7 +408,7 @@ stfu::test::operator()() const
 
     // Parent
     default:
-        close_handle(&filedes[write_end]);
+        close_handle(write_end);
 
         int stat_loc;
 
@@ -456,20 +457,20 @@ stfu::test_group::test_group(const char* n, const char* d) noexcept:
 }
 
 inline stfu::test_group&
-stfu::test_group::add_test(stfu::test& test)
-{
-    tests.push_back(test);
-    return *this;
-}
-
-inline stfu::test_group&
 stfu::test_group::set_verbose(bool b) noexcept
 {
     verbose = b;
     return *this;
 }
 
-inline const size_t
+inline stfu::test_group&
+stfu::test_group::add_test(stfu::test& test)
+{
+    tests.push_back(test);
+    return *this;
+}
+
+inline size_t
 stfu::test_group::operator()(std::ostream& out) const
 {
     stfu_private::widthstream wrapped_comment{75, out};
@@ -547,7 +548,7 @@ stfu_private::failed_assert::failed_assert(const char* f, size_t l,
 }
 
 inline
-stfu_private::widthbuf::widthbuf(size_t w, std::streambuf* s) noexcept:
+stfu_private::widthbuf::widthbuf(size_t w, std::streambuf* s):
     width{w}, count{0}, sbuf{s}
 {
 }
@@ -570,7 +571,7 @@ stfu_private::widthbuf::widthbuf(size_t w, std::streambuf* s) noexcept:
 //   we break the line at the limit.
 //
 inline stfu_private::widthbuf::int_type
-stfu_private::widthbuf::overflow(int_type c) noexcept
+stfu_private::widthbuf::overflow(int_type c)
 {
     if (traits_type::eq_int_type(traits_type::eof(), c)) {
         return traits_type::not_eof(c);
@@ -579,7 +580,7 @@ stfu_private::widthbuf::overflow(int_type c) noexcept
     switch (c) {
     case '\n':
     case '\r': {
-        buffer += c;
+        buffer += static_cast<char>(c);
         count = 0;
         sbuf->sputn(prefix.c_str(), prefix.length());
         int_type rc = sbuf->sputn(buffer.c_str(), buffer.size());
@@ -588,10 +589,10 @@ stfu_private::widthbuf::overflow(int_type c) noexcept
     }
 
     case '\a':
-        return sbuf->sputc(c);
+        return sbuf->sputc(static_cast<char>(c));
 
     case '\t':
-        buffer += c;
+        buffer += static_cast<char>(c);
         count += tab_width - count % tab_width;
         return c;
 
@@ -611,14 +612,14 @@ stfu_private::widthbuf::overflow(int_type c) noexcept
             }
             sbuf->sputc('\n');
         }
-        buffer += c;
+        buffer += static_cast<char>(c);
         ++count;
         return c;
     }
 }
 
 inline
-stfu_private::widthstream::widthstream(size_t width, std::ostream &os) noexcept:
+stfu_private::widthstream::widthstream(size_t width, std::ostream &os):
     std::ostream{&buf}, buf{width, os.rdbuf()}
 {
 }

@@ -17,6 +17,8 @@ selftest: $(OBJS)
 test: selftest
 	./selftest
 
+all: selftest
+
 clean:
 	rm -f selftest *.o *.d
 

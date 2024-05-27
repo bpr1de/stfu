@@ -94,8 +94,8 @@ main(int argc, char* argv[])
             {
                 stfu::test t{"SomeValue", [](){}};
 
-                STFU_PASS_IFF(0 == t.get_name().compare("SomeValue") &&
-                             0 != t.get_name().compare("WrongValue"));
+                STFU_PASS_IFF(t.get_name() == "SomeValue" &&
+                              t.get_name() != "WrongValue");
             },
             "Verify that test name can be set."
     };
@@ -104,8 +104,8 @@ main(int argc, char* argv[])
             {
                 stfu::test t{"", [](){}, "My Value"};
 
-                STFU_PASS_IFF(0 == t.get_description().compare("My Value") &&
-                             0 != t.get_description().compare("WrongValue"));
+                STFU_PASS_IFF(t.get_description() == "My Value" &&
+                              t.get_description() != "WrongValue");
 
             },
             "Verify that test description can be set."
@@ -211,18 +211,18 @@ main(int argc, char* argv[])
             .set_verbose(true);
 
     if (1 == argc) {
-        return unit_tests();
+        return static_cast<int>(unit_tests());
     }
 
     std::string arg{argv[1]};
-    if (0 == arg.compare("--examples")) {
+    if (arg == "--examples") {
         examples();
         return 0;
     }
 
     std::cerr << "Usage: " << argv[0] << " [--examples]" << std::endl;
 
-    if (0 == arg.compare("--help")) {
+    if (arg == "--help") {
         return 0;
     }
 
