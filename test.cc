@@ -6,6 +6,7 @@
 //
 
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <unistd.h>
 
@@ -30,7 +31,7 @@ main(int argc, char* argv[])
 
     stfu::test default_values{"default values", []
             {
-                stfu::test t{"", [](){}};
+                stfu::test t{"", []{}};
 
                 STFU_PASS_IFF(t.is_enabled());
             },
@@ -39,7 +40,7 @@ main(int argc, char* argv[])
 
     stfu::test enable_disable{"enable/disable", []
             {
-                stfu::test t{"", [](){}};
+                stfu::test t{"", []{}};
 
                 STFU_ASSERT(t.is_enabled());
                 STFU_ASSERT(!t.set_enable(false).is_enabled());
@@ -52,7 +53,7 @@ main(int argc, char* argv[])
 
     stfu::test basic_skipped{"basic skipped", []
             {
-                stfu::test t{"", [](){}};
+                stfu::test t{"", []{}};
 
                 t.set_enable(false);
 
@@ -63,7 +64,7 @@ main(int argc, char* argv[])
 
     stfu::test basic_pass{"basic pass", []
             {
-                stfu::test t{"", [](){ STFU_PASS(); }};
+                stfu::test t{"", []{ STFU_PASS(); }};
 
                 STFU_PASS_IFF(stfu::test_result::PASS == t().result);
             },
@@ -72,7 +73,7 @@ main(int argc, char* argv[])
 
     stfu::test basic_fail{"basic fail", []
             {
-                stfu::test t{"", [](){}};
+                stfu::test t{"", []{}};
 
                 STFU_PASS_IFF(stfu::test_result::FAIL == t().result);
             },
@@ -81,7 +82,7 @@ main(int argc, char* argv[])
 
     stfu::test basic_crash{"basic crash", []
             {
-                stfu::test t{"", [](){ *((int*)0x1) = 1; }};
+                stfu::test t{"", []{ *((int*)0x1) = 1; }};
                 auto r = t();
 
                 STFU_PASS_IFF(stfu::test_result::CRASH == r.result);
@@ -92,7 +93,7 @@ main(int argc, char* argv[])
 
     stfu::test name_test{"test name", []
             {
-                stfu::test t{"SomeValue", [](){}};
+                stfu::test t{"SomeValue", []{}};
 
                 STFU_PASS_IFF(t.get_name() == "SomeValue" &&
                               t.get_name() != "WrongValue");
@@ -102,7 +103,7 @@ main(int argc, char* argv[])
 
     stfu::test description_test{"test description", []
             {
-                stfu::test t{"", [](){}, "My Value"};
+                stfu::test t{"", []{}, "My Value"};
 
                 STFU_PASS_IFF(t.get_description() == "My Value" &&
                               t.get_description() != "WrongValue");
@@ -111,12 +112,74 @@ main(int argc, char* argv[])
             "Verify that test description can be set."
     };
 
-    stfu::test_group unit_tests{"unit tests",
-        "Self-tests of the STFU public API."};
+    auto substr_count = [](const std::string& s, const std::string& p){
+        std::size_t count = 0;
+        decltype(s.size()) pos = 0;
+        while (std::string::npos != (pos = s.find(p, pos))) {
+            ++count;
+            pos += p.length();
+        }
+        return count;
+    };
+
+    stfu::test fixtures{"fixtures count", [substr_count]
+            {
+                size_t fixture_in = 0, fixture_out = 0;
+
+                stfu::test_group nested{"nested", "nested tests"};
+
+                nested.add_test(stfu::test{"(fixtures 1...)",
+                                [&](){ STFU_PASS_IFF(2 == fixture_in &&
+                                                     0 == fixture_out); }})
+                      .add_test(stfu::test{"(fixtures 2...)",
+                                [&](){ STFU_PASS_IFF(3 == fixture_in &&
+                                                     1 == fixture_out); }})
+                      .add_test(stfu::test{"(fixtures 3...)",
+                                [&](){ STFU_PASS_IFF(4 == fixture_in &&
+                                                     2 == fixture_out); }})
+                      .add_before_all(stfu::test_group::fixture{
+                                [&](){ ++fixture_in; return true; }})
+                      .add_before_each(stfu::test_group::fixture{
+                                [&](){ ++fixture_in; return true; }})
+                      .add_after_all(stfu::test_group::fixture{
+                                [&](){ ++fixture_out; return true; }})
+                      .add_after_each(stfu::test_group::fixture{
+                                [&](){ ++fixture_out; return true; }})
+                      .set_verbose(false);
+
+                std::ostringstream output;
+                STFU_ASSERT(0 == nested(output));
+                STFU_ASSERT(4 == fixture_in && 4 == fixture_out);
+                STFU_PASS_IFF(3 == substr_count(output.str(), "PASS"));
+            },
+            "Verify that fixtures fire when they should."
+    };
+
+    stfu::test fixtures_errors{"fixtures errors", []
+            {
+                stfu::test_group nested{"nested", "nested tests"};
+
+                nested.add_test(stfu::test{"(fixtures)",
+                                [](){ STFU_FAIL(); }})
+                      .add_before_all(stfu::test_group::fixture{
+                                [](){ return false; }})
+                      .set_verbose(false);
+
+                std::ostringstream output;
+                STFU_ASSERT(0 == nested(output));
+                STFU_PASS_IFF("# ERROR - failure in fixture: before_all\n" ==
+                              output.str());
+            },
+            "Verify behavior of exceptional fixtures."
+    };
 
     //
     // Group of all the unit tests (all expected to PASS).
     //
+
+    stfu::test_group unit_tests{"unit tests",
+                                "Self-tests of the STFU public API."};
+
     unit_tests.add_test(default_result)
               .add_test(default_values)
               .add_test(enable_disable)
@@ -130,6 +193,8 @@ main(int argc, char* argv[])
                   "anonymous test",
                   []{ STFU_PASS(); },
                   "Anonymously defined test"})
+              .add_test(fixtures)
+              .add_test(fixtures_errors)
               .set_verbose(false);
 
     //

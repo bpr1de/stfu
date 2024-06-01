@@ -15,6 +15,7 @@
 #include <chrono>
 #include <utility>
 #include <vector>
+#include <stdexcept>
 
 #include <unistd.h>
 #include <csignal>
@@ -80,9 +81,9 @@ namespace stfu {
     //
 
     class test {
-        using test_routine = std::function<void()>;
-
         public:
+
+        using test_routine = std::function<void()>;
 
         test(const char* name,
              test_routine routine,
@@ -124,15 +125,27 @@ namespace stfu {
     class test_group {
         public:
 
+        using fixture = std::function<bool()>;
+
         explicit test_group(const char* name,
                             const char* description = "") noexcept;
 
         test_group& set_verbose(bool) noexcept;
         test_group& add_test(const stfu::test&);
 
+        test_group& add_before_all(const fixture&);
+        test_group& add_before_each(const fixture&);
+        test_group& add_after_all(const fixture&);
+        test_group& add_after_each(const fixture&);
+
         size_t operator()(std::ostream& = std::cout) const;
 
         protected:
+
+        std::vector<fixture> before_all;
+        std::vector<fixture> before_each;
+        std::vector<fixture> after_all;
+        std::vector<fixture> after_each;
 
         std::vector<stfu::test> tests;
 
@@ -192,6 +205,16 @@ namespace stfu_private {
         public:
 
         explicit failed_assert(const char*, size_t, const char*) noexcept;
+    };
+
+    //
+    // A class used to handle failures in fixtures supporting test routines.
+    //
+
+    class fixture_exception: public std::runtime_error {
+        public:
+
+        explicit fixture_exception(const char *);
     };
 
     class widthbuf: public std::streambuf {
@@ -470,14 +493,45 @@ stfu::test_group::add_test(const stfu::test& test)
     return *this;
 }
 
+inline stfu::test_group&
+stfu::test_group::add_before_all(const fixture& f)
+{
+    before_all.push_back(f);
+    return *this;
+}
+
+inline stfu::test_group&
+stfu::test_group::add_before_each(const fixture& f)
+{
+    before_each.push_back(f);
+    return *this;
+}
+
+inline stfu::test_group&
+stfu::test_group::add_after_all(const fixture& f)
+{
+    after_all.push_back(f);
+    return *this;
+}
+
+inline stfu::test_group&
+stfu::test_group::add_after_each(const fixture& f)
+{
+    after_each.push_back(f);
+    return *this;
+}
+
 inline size_t
 stfu::test_group::operator()(std::ostream& out) const
 {
+    using stfu_private::fixture_exception;
+
     stfu_private::widthstream wrapped_comment{75, out};
     size_t failures = 0;
 
     if (verbose) {
-        out << "# Running " << tests.size() << " test(s) "
+        out << "#" << std::endl
+            << "# Running " << tests.size() << " test(s) "
             << "in group: " << name << std::endl;
 
         out << "#" << std::endl
@@ -485,27 +539,66 @@ stfu::test_group::operator()(std::ostream& out) const
             << "#" << std::endl;
     }
 
-    for (const auto& t: tests) {
-        const auto r = t();
+    try {
 
-        if (verbose) {
-            out << "# " << t.get_name() << ": " << std::endl;
-            wrapped_comment << t.get_description() << std::endl << std::endl;
+        // Run global prefixes.
+        for (const auto &f: before_all) {
+            if (!f()) {
+                throw fixture_exception("before_all");
+            }
         }
 
-        if ((stfu::test_result::PASS != r.result) &&
-            (stfu::test_result::SKIPPED != r.result)) {
-            ++failures;
+        // Run all tests.
+        for (const auto &t: tests) {
+
+            // Run per-test prefixes.
+            for (const auto &f: before_each) {
+                if (!f()) {
+                    throw fixture_exception("before_each");
+                }
+            }
+
+            // Run the test routine.
+            const auto r = t();
+
+            // Run per-test postfixes.
+            for (const auto &f: after_each) {
+                if (!f()) {
+                    throw fixture_exception("after_each");
+                }
+            }
+
+            if (verbose) {
+                out << "# " << t.get_name() << ": " << std::endl;
+                wrapped_comment << t.get_description() << std::endl
+                                << std::endl;
+            }
+
+            if ((stfu::test_result::PASS != r.result) &&
+                (stfu::test_result::SKIPPED != r.result)) {
+                ++failures;
+            }
+
+            out << std::setw(20) << std::left << t.get_name()
+                << r
+                << " - in " << r.runtime.count() << "s"
+                << std::endl;
+
+            if (verbose) {
+                out << std::endl;
+            }
         }
 
-        out << std::setw(20) << std::left << t.get_name()
-            << r
-            << " - in " << r.runtime.count() << "s"
-            << std::endl;
-
-        if (verbose) {
-            out << std::endl;
+        // Run global postfixes.
+        for (const auto &f: after_all) {
+            if (!f()) {
+                throw fixture_exception("after_all");
+            }
         }
+    }
+
+    catch (stfu_private::fixture_exception& e) {
+        out << "# ERROR - failure in fixture: " << e.what() << std::endl;
     }
 
     if (verbose) {
@@ -545,6 +638,12 @@ stfu_private::failed_assert::failed_assert(const char* f, size_t l,
     message.append(": \"")
            .append(x)
            .append("\"");
+}
+
+inline
+stfu_private::fixture_exception::fixture_exception(const char *m):
+    std::runtime_error{m}
+{
 }
 
 inline

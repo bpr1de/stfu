@@ -6,7 +6,9 @@ A simple, single-header unit-test framework for UNIX-like operating systems, wri
 
 Tests are defined as blocks of code that are then added to test groups, and groups are invoked as functional objects. Individual tests are run as a subprocess, enabling crash-detection and address-space compartmentalization. In order for any test to "pass", it must do so explicitly - simply returning 0 or true (or not running at all) will **not** yield a passing result.
 
-Test results including runtime are printed to standard out in a parser-friendly format suitable for integration with scripts/Make-based build projects.
+Optional fixtures (see below) may be added to test execution to assist with setup.
+
+Test results - including wall-clock runtime - are printed to an output stream (standard out by default) in a parser-friendly format suitable for integration with scripts/Make-based build projects.
 
 ## Usage
 
@@ -55,7 +57,7 @@ Test name           PASS - in 0.00173667s
 # Summary: Group name completed with 0 failures
 ```
 
-## Examples
+## General Examples
 
 A full set of examples are included in the STFU unit-test program, `test.cc`. Build and run this with argument `--examples` to see how test cases will print for various conditions. View the code itself to see how the examples work.
 
@@ -120,4 +122,38 @@ segfault condition  CRASH (crashed with: Segmentation fault) - in 0.000663333s
 
 # Summary: examples completed with 5 failures
 % 
+```
+
+## Fixtures
+
+Fixtures provide a means of surrounding your test routines with setup/teardown logic which might be required to prepare (and/or clean up) the environment for your tests to run.
+
+It's important to note that fixtures are **not** part of your unit tests, and therefore they do not PASS or FAIL, nor directly cause your test routines to PASS or FAIL, either. Furthermore, they do **not** run in the subprocess context of your unit tests: they do not share the same address space as your test routines, and if your fixture crashes, the entire program will crash.
+
+Fixtures are intended to allow for manipulation of the runtime environment, not for testing you logic. Examples of use cases for fixtures include:
+1. Preparing a working directory for tests to run within.
+2. Connecting to an external database or server.
+3. Uploading test results.
+
+Fixtures are attached to test groups, and can be specified to run once before (or after) _all_ the tests in the group, or once before (or after) _each_ test in the group. Multiple fixtures may be attached, and are run in the order in which they were added.
+
+### Fixture examples
+
+```
+stfu::test_group group{"example", "showcase fixtures"};
+
+// Will save and restore the current working directory.
+int saved_dir;
+
+group.add_before_all(stfu::test_group::fixture{
+                  [&saved_dir]{
+                     // Set up a temporary directory to work from.
+                     saved_dir = ::open(".", O_SEARCH);
+                     return (0 == ::chdir("/tmp/test_directory"));
+                  }})
+     .add_after_all(stfu::test_group::fixture{
+                  [&saved_dir]{
+                     // Restore working directory.
+                     return (0 == ::fchdir(saved_dir));
+                  });
 ```
