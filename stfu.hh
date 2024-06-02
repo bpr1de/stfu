@@ -128,7 +128,7 @@ namespace stfu {
                             const char* description = "") noexcept;
 
         test_group& set_verbose(bool) noexcept;
-        test_group& add_test(stfu::test&);
+        test_group& add_test(const stfu::test&);
 
         size_t operator()(std::ostream& = std::cout) const;
 
@@ -464,7 +464,7 @@ stfu::test_group::set_verbose(bool b) noexcept
 }
 
 inline stfu::test_group&
-stfu::test_group::add_test(stfu::test& test)
+stfu::test_group::add_test(const stfu::test& test)
 {
     tests.push_back(test);
     return *this;

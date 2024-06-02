@@ -126,6 +126,10 @@ main(int argc, char* argv[])
               .add_test(basic_crash)
               .add_test(name_test)
               .add_test(description_test)
+              .add_test(stfu::test{
+                  "anonymous test",
+                  []{ STFU_PASS(); },
+                  "Anonymously defined test"})
               .set_verbose(false);
 
     //
