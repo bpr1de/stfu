@@ -21,6 +21,8 @@
 #include <csignal>
 #include <sys/wait.h>
 
+#define STFU_VERSION    "1.0.0"
+
 //
 // Conclude the test routine with a passing result.
 //
@@ -546,6 +548,8 @@ stfu::test_group::operator()(std::ostream& out) const
 
     if (verbose) {
         out << "#" << std::endl
+            << "# STFU version " STFU_VERSION << std::endl
+            << "#" << std::endl
             << "# Running " << tests.size() << " test(s) "
             << "in group: " << name << std::endl;
 
