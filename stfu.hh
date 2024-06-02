@@ -77,6 +77,18 @@ namespace stfu {
     };
 
     //
+    // Summary of a set of test results.
+    //
+
+    struct test_result_summary {
+        std::size_t didnt_run{0};
+        std::size_t skipped{0};
+        std::size_t passed{0};
+        std::size_t failed{0};
+        std::size_t crashed{0};
+    };
+
+    //
     // Encapsulation of a test routine.
     //
 
@@ -131,14 +143,14 @@ namespace stfu {
                             const char* description = "") noexcept;
 
         test_group& set_verbose(bool) noexcept;
-        test_group& add_test(const stfu::test&);
+        test_group& add_test(const test&);
 
         test_group& add_before_all(const fixture&);
         test_group& add_before_each(const fixture&);
         test_group& add_after_all(const fixture&);
         test_group& add_after_each(const fixture&);
 
-        size_t operator()(std::ostream& = std::cout) const;
+        test_result_summary operator()(std::ostream& = std::cout) const;
 
         protected:
 
@@ -147,7 +159,7 @@ namespace stfu {
         std::vector<fixture> after_all;
         std::vector<fixture> after_each;
 
-        std::vector<stfu::test> tests;
+        std::vector<test> tests;
 
         std::string name;
         std::string description;
@@ -521,13 +533,16 @@ stfu::test_group::add_after_each(const fixture& f)
     return *this;
 }
 
-inline size_t
+inline stfu::test_result_summary
 stfu::test_group::operator()(std::ostream& out) const
 {
     using stfu_private::fixture_exception;
 
     stfu_private::widthstream wrapped_comment{75, out};
-    size_t failures = 0;
+    test_result_summary results;
+
+    // Initialize based on all the tests yet to run.
+    results.didnt_run = tests.size();
 
     if (verbose) {
         out << "#" << std::endl
@@ -560,6 +575,30 @@ stfu::test_group::operator()(std::ostream& out) const
 
             // Run the test routine.
             const auto r = t();
+            --results.didnt_run;
+
+            // Account for results summary.
+            switch (r.result) {
+            case stfu::test_result::DIDNT_RUN: // Not expected
+                ++results.didnt_run;
+                break;
+
+            case stfu::test_result::SKIPPED:
+                ++results.skipped;
+                break;
+
+            case stfu::test_result::PASS:
+                ++results.passed;
+                break;
+
+            case stfu::test_result::FAIL:
+                ++results.failed;
+                break;
+
+            case stfu::test_result::CRASH:
+                ++results.crashed;
+                break;
+            }
 
             // Run per-test postfixes.
             for (const auto &f: after_each) {
@@ -572,11 +611,6 @@ stfu::test_group::operator()(std::ostream& out) const
                 out << "# " << t.get_name() << ": " << std::endl;
                 wrapped_comment << t.get_description() << std::endl
                                 << std::endl;
-            }
-
-            if ((stfu::test_result::PASS != r.result) &&
-                (stfu::test_result::SKIPPED != r.result)) {
-                ++failures;
             }
 
             out << std::setw(20) << std::left << t.get_name()
@@ -602,11 +636,13 @@ stfu::test_group::operator()(std::ostream& out) const
     }
 
     if (verbose) {
+        std::size_t failures = results.failed + results.crashed;
+
         out << "# Summary: " << name << " completed with " << failures
             << ((1 == failures) ? " failure" : " failures") << std::endl;
     }
 
-    return failures;
+    return results;
 }
 
 inline const std::string&

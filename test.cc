@@ -148,7 +148,12 @@ main(int argc, char* argv[])
                       .set_verbose(false);
 
                 std::ostringstream output;
-                STFU_ASSERT(0 == nested(output));
+                stfu::test_result_summary summary = nested(output);
+                STFU_ASSERT(0 == summary.didnt_run);
+                STFU_ASSERT(0 == summary.skipped);
+                STFU_ASSERT(3 == summary.passed);
+                STFU_ASSERT(0 == summary.failed);
+                STFU_ASSERT(0 == summary.crashed);
                 STFU_ASSERT(4 == fixture_in && 4 == fixture_out);
                 STFU_PASS_IFF(3 == substr_count(output.str(), "PASS"));
             },
@@ -166,7 +171,12 @@ main(int argc, char* argv[])
                       .set_verbose(false);
 
                 std::ostringstream output;
-                STFU_ASSERT(0 == nested(output));
+                stfu::test_result_summary summary = nested(output);
+                STFU_ASSERT(1 == summary.didnt_run);
+                STFU_ASSERT(0 == summary.skipped);
+                STFU_ASSERT(0 == summary.passed);
+                STFU_ASSERT(0 == summary.failed);
+                STFU_ASSERT(0 == summary.crashed);
                 STFU_PASS_IFF("# ERROR - failure in fixture: before_all\n" ==
                               output.str());
             },
@@ -280,7 +290,8 @@ main(int argc, char* argv[])
             .set_verbose(true);
 
     if (1 == argc) {
-        return static_cast<int>(unit_tests());
+        stfu::test_result_summary summary = unit_tests();
+        return static_cast<int>(summary.failed + summary.crashed);
     }
 
     std::string arg{argv[1]};
