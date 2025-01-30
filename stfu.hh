@@ -206,7 +206,7 @@ namespace stfu_private {
     class failed_at: public fail {
         public:
 
-        explicit failed_at(const char*, size_t) noexcept;
+        explicit failed_at(const char*, std::size_t) noexcept;
     };
 
     //
@@ -218,7 +218,7 @@ namespace stfu_private {
     class failed_assert: public failed_at {
         public:
 
-        explicit failed_assert(const char*, size_t, const char*) noexcept;
+        explicit failed_assert(const char*, std::size_t, const char*) noexcept;
     };
 
     //
@@ -234,17 +234,17 @@ namespace stfu_private {
     class widthbuf: public std::streambuf {
         public:
 
-        widthbuf(size_t w, std::streambuf* s);
+        widthbuf(std::size_t w, std::streambuf* s);
 
         protected:
 
         typedef std::basic_string<char_type> string;
 
-        static const size_t tab_width = 8;
+        static const std::size_t tab_width = 8;
         const std::string prefix = "#   ";
 
-        size_t width;
-        size_t count;
+        std::size_t width;
+        std::size_t count;
 
         std::streambuf* sbuf;
         string buffer;
@@ -255,7 +255,7 @@ namespace stfu_private {
     class widthstream: public std::ostream {
         public:
 
-        widthstream(size_t width, std::ostream &os);
+        widthstream(std::size_t width, std::ostream &os);
 
         protected:
 
@@ -662,7 +662,7 @@ stfu_private::fail::fail() noexcept:
 }
 
 inline
-stfu_private::failed_at::failed_at(const char* f, size_t l) noexcept
+stfu_private::failed_at::failed_at(const char* f, std::size_t l) noexcept
 {
     message.append(" at ")
            .append(f)
@@ -671,7 +671,7 @@ stfu_private::failed_at::failed_at(const char* f, size_t l) noexcept
 }
 
 inline
-stfu_private::failed_assert::failed_assert(const char* f, size_t l,
+stfu_private::failed_assert::failed_assert(const char* f, std::size_t l,
         const char* x) noexcept:
     failed_at{f, l}
 {
@@ -687,7 +687,7 @@ stfu_private::fixture_exception::fixture_exception(const char *m):
 }
 
 inline
-stfu_private::widthbuf::widthbuf(size_t w, std::streambuf* s):
+stfu_private::widthbuf::widthbuf(std::size_t w, std::streambuf* s):
     width{w}, count{0}, sbuf{s}
 {
 }
@@ -737,7 +737,7 @@ stfu_private::widthbuf::overflow(int_type c)
 
     default:
         if (count >= width) {
-            size_t wpos = buffer.find_last_of(" \t");
+            std::size_t wpos = buffer.find_last_of(" \t");
             if (wpos != string::npos) {
                 sbuf->sputn(prefix.c_str(), prefix.length());
                 sbuf->sputn(buffer.c_str(), wpos);
@@ -758,7 +758,7 @@ stfu_private::widthbuf::overflow(int_type c)
 }
 
 inline
-stfu_private::widthstream::widthstream(size_t width, std::ostream &os):
+stfu_private::widthstream::widthstream(std::size_t width, std::ostream &os):
     std::ostream{&buf}, buf{width, os.rdbuf()}
 {
 }
