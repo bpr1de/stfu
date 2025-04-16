@@ -18,7 +18,7 @@
 #include <stdexcept>
 
 #include <unistd.h>
-#include <csignal>
+#include <cstring>
 #include <sys/wait.h>
 
 #define STFU_VERSION    "1.0.0"
@@ -470,7 +470,7 @@ stfu::test::operator()() const
             const int signal = WTERMSIG(stat_loc);
             if (signal < NSIG) {
                 r.message.append("crashed with: ")
-                         .append(::sys_siglist[signal]);
+                         .append(::strsignal(signal));
             }
             break;
         }
